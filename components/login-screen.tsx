@@ -3,22 +3,33 @@
 import { useState } from 'react'
 import { Package, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { MOCK_ACCOUNT } from '@/lib/mock-data'
+import { supabase } from '@/lib/supabase'
 
 export function LoginScreen({ onLogin }: { onLogin: (siteName: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // ダミー認証: モックアカウントと一致すればログイン成功
-    if (email.trim() === MOCK_ACCOUNT.email && password === MOCK_ACCOUNT.password) {
-      setError('')
-      onLogin(MOCK_ACCOUNT.siteName)
-    } else {
+    setError('')
+    setLoading(true)
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+
+    setLoading(false)
+
+    if (authError || !data.user) {
       setError('メールアドレスまたはパスワードが正しくありません。')
+      return
     }
+
+    // ログイン成功。拠点名はひとまずメールアドレスを表示（後でlocationsテーブルと連携可能）
+    onLogin(data.user.email ?? email.trim())
   }
 
   return (
@@ -47,7 +58,7 @@ export function LoginScreen({ onLogin }: { onLogin: (siteName: string) => void }
                 autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tanaka@kao-logistics.jp"
+                placeholder="tanaka@example-logistics.jp"
                 className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                 required
               />
@@ -78,15 +89,15 @@ export function LoginScreen({ onLogin }: { onLogin: (siteName: string) => void }
               </p>
             )}
 
-            <Button type="submit" className="h-11 w-full text-base">
+            <Button type="submit" className="h-11 w-full text-base" disabled={loading}>
               <LogIn className="size-4" aria-hidden />
-              ログイン
+              {loading ? 'ログイン中...' : 'ログイン'}
             </Button>
           </div>
         </form>
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          デモ用: {MOCK_ACCOUNT.email} / password
+          デモ用: tanaka@example-logistics.jp / password
         </p>
       </div>
     </main>
