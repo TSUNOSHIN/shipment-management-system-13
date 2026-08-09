@@ -34,6 +34,10 @@ export function ShipmentForm({
 
   async function handleLookup() {
     if (!zipcode.trim()) return
+    if (!/^\d{7}$/.test(zipcode.trim())) {
+      setError('郵便番号は半角数字7桁で入力してください。')
+      return
+    }
     setLooking(true)
     const result = await mockLookupAddress(zipcode)
     setAddress(result)
@@ -42,15 +46,34 @@ export function ShipmentForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError('')
+
     const store = stores.find((s) => s.id === storeId)
     if (!store) {
       setError('店舗を選択してください。')
       return
     }
+
+    if (!zipcode.trim() || !/^\d{7}$/.test(zipcode.trim())) {
+      setError('郵便番号は半角数字7桁で入力してください。')
+      return
+    }
+
+    if (!address.trim()) {
+      setError('住所を入力してください。')
+      return
+    }
+
     if (!arrivalTime) {
       setError('到着時間を入力してください。')
       return
     }
+
+    if (new Date(arrivalTime).getTime() <= Date.now()) {
+      setError('到着時間は現在より未来の日時を指定してください。')
+      return
+    }
+
     onSubmit({
       storeId: store.id,
       storeName: store.name,
@@ -112,6 +135,7 @@ export function ShipmentForm({
               value={zipcode}
               onChange={(e) => setZipcode(e.target.value)}
               placeholder="1600022"
+              maxLength={7}
               className={inputClass}
             />
             <Button
