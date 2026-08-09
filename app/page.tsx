@@ -9,6 +9,7 @@ import { StoreMaster } from '@/components/store-master'
 import { MOCK_SHIPMENTS, MOCK_STORES } from '@/lib/mock-data'
 import type { Shipment, ShipmentStatus, Store } from '@/lib/types'
 import { canTransition } from '@/lib/shipment-utils'
+import { supabase } from '@/lib/supabase'
 
 type Screen = 'list' | 'create' | 'stores'
 
@@ -18,13 +19,14 @@ export default function Page() {
   const [shipments, setShipments] = useState<Shipment[]>(MOCK_SHIPMENTS)
   const [stores, setStores] = useState<Store[]>(MOCK_STORES)
 
-  // --- 認証（ダミー） ---
+  // --- 認証 ---
   function handleLogin(name: string) {
     setSiteName(name)
     setScreen('list')
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await supabase.auth.signOut()
     setSiteName(null)
     setScreen('list')
   }
