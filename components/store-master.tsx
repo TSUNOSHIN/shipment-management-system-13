@@ -9,6 +9,15 @@ import { mockLookupAddress } from '@/lib/mock-data'
 const inputClass =
   'h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
 
+function validateStore(data: { name: string; zipcode: string; address: string }): string {
+  if (!data.name.trim()) return '店舗名を入力してください。'
+  if (data.name.trim().length > 50) return '店舗名は50文字以内で入力してください。'
+  if (!data.zipcode.trim()) return '郵便番号を入力してください。'
+  if (!/^\d{7}$/.test(data.zipcode.trim())) return '郵便番号は半角数字7桁で入力してください。'
+  if (!data.address.trim()) return '住所を入力してください。'
+  return ''
+}
+
 export function StoreMaster({
   stores,
   onBack,
@@ -26,10 +35,16 @@ export function StoreMaster({
   const [zipcode, setZipcode] = useState('')
   const [address, setAddress] = useState('')
   const [looking, setLooking] = useState(false)
+  const [error, setError] = useState('')
   const [editing, setEditing] = useState<Store | null>(null)
+  const [editError, setEditError] = useState('')
 
   async function handleLookup() {
     if (!zipcode.trim()) return
+    if (!/^\d{7}$/.test(zipcode.trim())) {
+      setError('郵便番号は半角数字7桁で入力してください。')
+      return
+    }
     setLooking(true)
     setAddress(await mockLookupAddress(zipcode))
     setLooking(false)
@@ -37,11 +52,29 @@ export function StoreMaster({
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
-    onAdd({ name: name.trim(), zipcode: zipcode.trim(), address: address.trim() })
+    const data = { name: name.trim(), zipcode: zipcode.trim(), address: address.trim() }
+    const message = validateStore(data)
+    if (message) {
+      setError(message)
+      return
+    }
+    setError('')
+    onAdd(data)
     setName('')
     setZipcode('')
     setAddress('')
+  }
+
+  function handleSaveEdit() {
+    if (!editing) return
+    const message = validateStore(editing)
+    if (message) {
+      setEditError(message)
+      return
+    }
+    setEditError('')
+    onUpdate(editing)
+    setEditing(null)
   }
 
   return (
@@ -69,6 +102,7 @@ export function StoreMaster({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="新宿東口店"
+            maxLength={50}
             className={inputClass}
             required
           />
@@ -84,6 +118,7 @@ export function StoreMaster({
               value={zipcode}
               onChange={(e) => setZipcode(e.target.value)}
               placeholder="1600022"
+              maxLength={7}
               className={inputClass}
             />
             <Button
@@ -114,6 +149,9 @@ export function StoreMaster({
             className={inputClass}
           />
         </div>
+
+        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+
         <Button type="submit" className="h-11 w-full text-base">
           登録する
         </Button>
@@ -129,12 +167,13 @@ export function StoreMaster({
             <EditRow
               key={store.id}
               store={editing}
+              error={editError}
               onChange={setEditing}
-              onCancel={() => setEditing(null)}
-              onSave={() => {
-                onUpdate(editing)
+              onCancel={() => {
                 setEditing(null)
+                setEditError('')
               }}
+              onSave={handleSaveEdit}
             />
           ) : (
             <li
@@ -147,7 +186,14 @@ export function StoreMaster({
                   〒{store.zipcode} {store.address}
                 </p>
               </div>
-              <Button variant="outline" size="icon-sm" onClick={() => setEditing({ ...store })}>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => {
+                  setEditing({ ...store })
+                  setEditError('')
+                }}
+              >
                 <Pencil className="size-4" aria-hidden />
                 <span className="sr-only">編集</span>
               </Button>
@@ -165,11 +211,13 @@ export function StoreMaster({
 
 function EditRow({
   store,
+  error,
   onChange,
   onCancel,
   onSave,
 }: {
   store: Store
+  error: string
   onChange: (s: Store) => void
   onCancel: () => void
   onSave: () => void
@@ -180,12 +228,14 @@ function EditRow({
         value={store.name}
         onChange={(e) => onChange({ ...store, name: e.target.value })}
         placeholder="店舗名"
+        maxLength={50}
         className={inputClass}
       />
       <input
         value={store.zipcode}
         onChange={(e) => onChange({ ...store, zipcode: e.target.value })}
         placeholder="郵便番号"
+        maxLength={7}
         className={inputClass}
       />
       <input
@@ -194,6 +244,7 @@ function EditRow({
         placeholder="住所"
         className={inputClass}
       />
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onCancel}>
           <X className="size-4" aria-hidden />
