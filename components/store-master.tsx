@@ -104,7 +104,6 @@ export function StoreMaster({
             placeholder="新宿東口店"
             maxLength={50}
             className={inputClass}
-            required
           />
         </div>
         <div>
