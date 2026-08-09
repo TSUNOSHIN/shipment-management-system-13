@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AppHeader } from '@/components/app-header'
 import { LoginScreen } from '@/components/login-screen'
 import { ShipmentList } from '@/components/shipment-list'
@@ -15,9 +15,20 @@ type Screen = 'list' | 'create' | 'stores'
 
 export default function Page() {
   const [siteName, setSiteName] = useState<string | null>(null)
+  const [checkingSession, setCheckingSession] = useState(true)
   const [screen, setScreen] = useState<Screen>('list')
   const [shipments, setShipments] = useState<Shipment[]>(MOCK_SHIPMENTS)
   const [stores, setStores] = useState<Store[]>(MOCK_STORES)
+
+  // ページ読み込み時に、既存のログインセッションがあるか確認する
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        setSiteName(session.user.email)
+      }
+      setCheckingSession(false)
+    })
+  }, [])
 
   // --- 認証 ---
   function handleLogin(name: string) {
@@ -71,6 +82,15 @@ export default function Page() {
 
   function handleDeleteStore(id: string) {
     setStores((prev) => prev.filter((s) => s.id !== id))
+  }
+
+  // セッション確認中は、ログイン画面を一瞬表示してしまわないよう待機
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">読み込み中...</p>
+      </main>
+    )
   }
 
   if (!siteName) {
