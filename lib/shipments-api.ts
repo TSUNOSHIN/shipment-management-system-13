@@ -1,44 +1,42 @@
 import { supabase } from './supabase'
-import type { Shipment, ShipmentStatus } from './types'
+import type { Shipment, ShipmentStatus, ShipmentType } from './types'
 
-// 出荷指示一覧を取得
+// 出荷指示一覧を取得（店舗情報もあわせて取得）
 export async function fetchShipments(): Promise<Shipment[]> {
   const { data, error } = await supabase
     .from('shipments')
-    .select('*')
+    .select('*, stores(store_name, zipcode, address)')
     .order('arrival_time', { ascending: true })
 
   if (error) throw error
 
-  return (data ?? []).map((row) => ({
+  return (data ?? []).map((row: any) => ({
     id: row.id,
-    locationId: row.location_id,
     storeId: row.store_id,
-    shipmentType: row.shipment_type,
+    storeName: row.stores?.store_name ?? '',
+    zipcode: row.stores?.zipcode ?? '',
+    address: row.stores?.address ?? '',
+    type: row.shipment_type as ShipmentType,
     arrivalTime: row.arrival_time,
-    status: row.status,
-    quantity: row.quantity,
-    createdAt: row.created_at,
-  })) as Shipment[]
+    status: row.status as ShipmentStatus,
+  }))
 }
 
 // 出荷指示を新規作成
 export async function createShipment(input: {
-  locationId: string
   storeId: string
-  shipmentType: string
+  type: ShipmentType
   arrivalTime: string
   quantity: number
 }) {
   const { data, error } = await supabase
     .from('shipments')
     .insert({
-      location_id: input.locationId,
       store_id: input.storeId,
-      shipment_type: input.shipmentType,
+      shipment_type: input.type,
       arrival_time: input.arrivalTime,
       quantity: input.quantity,
-      status: '準備中',
+      status: 'prep',
     })
     .select()
     .single()
