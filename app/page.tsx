@@ -6,50 +6,101 @@ import { LoginScreen } from '@/components/login-screen'
 import { ShipmentList } from '@/components/shipment-list'
 import { ShipmentForm } from '@/components/shipment-form'
 import { StoreMaster } from '@/components/store-master'
-import { MOCK_SHIPMENTS, MOCK_STORES } from '@/lib/mock-data'
 import type { Shipment, ShipmentStatus, Store } from '@/lib/types'
 import { canTransition } from '@/lib/shipment-utils'
 import { supabase } from '@/lib/supabase'
+import {
+  fetchShipments,
+  createShipment,
+  updateShipmentStatus,
+  deleteShipment,
+} from '@/lib/shipments-api'
+import { fetchStores, createStore, updateStore, deleteStore } from '@/lib/stores-api'
 
 type Screen = 'list' | 'create' | 'stores'
 
 export default function Page() {
   const [siteName, setSiteName] = useState<string | null>(null)
+  const [locationId, setLocationId] = useState<string | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [screen, setScreen] = useState<Screen>('list')
-  const [shipments, setShipments] = useState<Shipment[]>(MOCK_SHIPMENTS)
-  const [stores, setStores] = useState<Store[]>(MOCK_STORES)
+  const [shipments, setShipments] = useState<Shipment[]>([])
+  const [stores, setStores] = useState<Store[]>([])
+  const [dataLoading, setDataLoading] = useState(false)
+  const [dataError, setDataError] = useState('')
 
   // ページ読み込み時に、既存のログインセッションがあるか確認する
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user?.email) {
         setSiteName(session.user.email)
+        await loadLocationId(session.user.email)
       }
       setCheckingSession(false)
     })
   }, [])
 
+  // ログイン中ユーザーのメールアドレスから、拠点IDを取得する
+  async function loadLocationId(email: string) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('email', email)
+      .single()
+
+    if (!error && data) {
+      setLocationId(data.id)
+    }
+  }
+
+  // ログイン後、拠点IDが確定したら出荷指示・店舗データを読み込む
+  useEffect(() => {
+    if (!locationId) return
+    loadAllData()
+  }, [locationId])
+
+  async function loadAllData() {
+    setDataLoading(true)
+    setDataError('')
+    try {
+      const [shipmentsData, storesData] = await Promise.all([fetchShipments(), fetchStores()])
+      setShipments(shipmentsData)
+      setStores(storesData)
+    } catch (err) {
+      setDataError('データの取得に失敗しました。')
+      console.error(err)
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
   // --- 認証 ---
-  function handleLogin(name: string) {
+  async function handleLogin(name: string) {
     setSiteName(name)
+    await loadLocationId(name)
     setScreen('list')
   }
 
   async function handleLogout() {
     await supabase.auth.signOut()
     setSiteName(null)
+    setLocationId(null)
+    setShipments([])
+    setStores([])
     setScreen('list')
   }
 
   // --- 出荷指示 ---
-  function handleCreateShipment(data: Omit<Shipment, 'id' | 'status'>) {
-    const newShipment: Shipment = {
-      ...data,
-      id: `sh-${Date.now()}`,
-      status: 'prep',
-    }
-    setShipments((prev) => [...prev, newShipment])
+  async function handleCreateShipment(data: Omit<Shipment, 'id' | 'status'>) {
+    if (!locationId) return
+    await createShipment({
+      locationId,
+      storeId: data.storeId,
+      type: data.type,
+      arrivalTime: data.arrivalTime,
+      quantity: 1,
+    })
+    await loadAllData()
     setScreen('list')
   }
 
@@ -57,31 +108,29 @@ export default function Page() {
   function handleChangeStatus(id: string, to: ShipmentStatus): boolean {
     const target = shipments.find((s) => s.id === id)
     if (!target || !canTransition(target.status, to)) return false
-    setShipments((prev) => prev.map((s) => (s.id === id ? { ...s, status: to } : s)))
+    updateShipmentStatus(id, to).then(() => loadAllData())
     return true
   }
 
-  function handleDeleteShipment(id: string) {
-    setShipments((prev) => prev.filter((s) => s.id !== id))
+  async function handleDeleteShipment(id: string) {
+    await deleteShipment(id)
+    await loadAllData()
   }
 
   // --- 店舗マスタ ---
-  function handleAddStore(data: Omit<Store, 'id'>) {
-    setStores((prev) => [...prev, { ...data, id: `store-${Date.now()}` }])
+  async function handleAddStore(data: Omit<Store, 'id'>) {
+    await createStore(data)
+    await loadAllData()
   }
 
-  function handleUpdateStore(updated: Store) {
-    setStores((prev) => prev.map((s) => (s.id === updated.id ? updated : s)))
-    // 既存の出荷指示にも店舗名を反映
-    setShipments((prev) =>
-      prev.map((s) =>
-        s.storeId === updated.id ? { ...s, storeName: updated.name } : s,
-      ),
-    )
+  async function handleUpdateStore(updated: Store) {
+    await updateStore(updated.id, updated)
+    await loadAllData()
   }
 
-  function handleDeleteStore(id: string) {
-    setStores((prev) => prev.filter((s) => s.id !== id))
+  async function handleDeleteStore(id: string) {
+    await deleteStore(id)
+    await loadAllData()
   }
 
   // セッション確認中は、ログイン画面を一瞬表示してしまわないよう待機
@@ -105,31 +154,45 @@ export default function Page() {
         onLogout={handleLogout}
       />
 
-      {screen === 'list' && (
-        <ShipmentList
-          shipments={shipments}
-          onCreate={() => setScreen('create')}
-          onChangeStatus={handleChangeStatus}
-          onDelete={handleDeleteShipment}
-        />
+      {dataError && (
+        <p className="mx-auto max-w-3xl px-4 pt-4 text-sm font-medium text-destructive">
+          {dataError}
+        </p>
       )}
 
-      {screen === 'create' && (
-        <ShipmentForm
-          stores={stores}
-          onBack={() => setScreen('list')}
-          onSubmit={handleCreateShipment}
-        />
-      )}
+      {dataLoading ? (
+        <p className="mx-auto max-w-3xl px-4 py-10 text-center text-sm text-muted-foreground">
+          読み込み中...
+        </p>
+      ) : (
+        <>
+          {screen === 'list' && (
+            <ShipmentList
+              shipments={shipments}
+              onCreate={() => setScreen('create')}
+              onChangeStatus={handleChangeStatus}
+              onDelete={handleDeleteShipment}
+            />
+          )}
 
-      {screen === 'stores' && (
-        <StoreMaster
-          stores={stores}
-          onBack={() => setScreen('list')}
-          onAdd={handleAddStore}
-          onUpdate={handleUpdateStore}
-          onDelete={handleDeleteStore}
-        />
+          {screen === 'create' && (
+            <ShipmentForm
+              stores={stores}
+              onBack={() => setScreen('list')}
+              onSubmit={handleCreateShipment}
+            />
+          )}
+
+          {screen === 'stores' && (
+            <StoreMaster
+              stores={stores}
+              onBack={() => setScreen('list')}
+              onAdd={handleAddStore}
+              onUpdate={handleUpdateStore}
+              onDelete={handleDeleteStore}
+            />
+          )}
+        </>
       )}
     </div>
   )

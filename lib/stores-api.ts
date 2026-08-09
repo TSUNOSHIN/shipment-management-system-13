@@ -11,7 +11,7 @@ export async function fetchStores(): Promise<Store[]> {
   if (error) throw error
 
   return (data ?? []).map((row) => ({
-    id: row.id,
+    id: String(row.id),
     name: row.store_name,
     zipcode: row.zipcode,
     address: row.address,

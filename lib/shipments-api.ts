@@ -24,6 +24,7 @@ export async function fetchShipments(): Promise<Shipment[]> {
 
 // 出荷指示を新規作成
 export async function createShipment(input: {
+  locationId: string
   storeId: string
   type: ShipmentType
   arrivalTime: string
@@ -32,6 +33,7 @@ export async function createShipment(input: {
   const { data, error } = await supabase
     .from('shipments')
     .insert({
+      location_id: input.locationId,
       store_id: input.storeId,
       shipment_type: input.type,
       arrival_time: input.arrivalTime,
