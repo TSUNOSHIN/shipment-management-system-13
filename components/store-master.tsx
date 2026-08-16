@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ArrowLeft, Loader2, Pencil, Search, Trash2, X, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Store } from '@/lib/types'
-import { mockLookupAddress } from '@/lib/mock-data'
+import { lookupAddressByZipcode } from '@/lib/zipcloud'
 
 const inputClass =
   'h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30'
@@ -46,8 +46,15 @@ export function StoreMaster({
       return
     }
     setLooking(true)
-    setAddress(await mockLookupAddress(zipcode))
-    setLooking(false)
+    setError('')
+    try {
+      const result = await lookupAddressByZipcode(zipcode.trim())
+      setAddress(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '住所検索に失敗しました。')
+    } finally {
+      setLooking(false)
+    }
   }
 
   function handleAdd(e: React.FormEvent) {
@@ -90,7 +97,6 @@ export function StoreMaster({
 
       <h2 className="mb-4 text-lg font-bold text-foreground">店舗マスタ管理</h2>
 
-      {/* 新規登録フォーム */}
       <form onSubmit={handleAdd} className="mb-6 space-y-4 rounded-2xl border border-border bg-card p-5">
         <p className="text-sm font-bold text-foreground">店舗の新規登録</p>
         <div>
@@ -156,7 +162,6 @@ export function StoreMaster({
         </Button>
       </form>
 
-      {/* 登録済み店舗一覧 */}
       <p className="mb-2 text-sm font-bold text-foreground">
         登録済み店舗（{stores.length}件）
       </p>

@@ -6,6 +6,7 @@ import { LoginScreen } from '@/components/login-screen'
 import { ShipmentList } from '@/components/shipment-list'
 import { ShipmentForm } from '@/components/shipment-form'
 import { StoreMaster } from '@/components/store-master'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import type { Shipment, ShipmentStatus, Store } from '@/lib/types'
 import { canTransition } from '@/lib/shipment-utils'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +19,7 @@ import {
 import { fetchStores, createStore, updateStore, deleteStore } from '@/lib/stores-api'
 
 type Screen = 'list' | 'create' | 'stores'
+type PendingDelete = { type: 'shipment' | 'store'; id: string } | null
 
 export default function Page() {
   const [siteName, setSiteName] = useState<string | null>(null)
@@ -28,32 +30,32 @@ export default function Page() {
   const [stores, setStores] = useState<Store[]>([])
   const [dataLoading, setDataLoading] = useState(false)
   const [dataError, setDataError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null)
 
-  // ページ読み込み時に、既存のログインセッションがあるか確認する
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user?.email) {
-        setSiteName(session.user.email)
         await loadLocationId(session.user.email)
       }
       setCheckingSession(false)
     })
   }, [])
 
-  // ログイン中ユーザーのメールアドレスから、拠点IDを取得する
   async function loadLocationId(email: string) {
     const { data, error } = await supabase
       .from('locations')
-      .select('id')
+      .select('id, location_name')
       .eq('email', email)
       .single()
 
     if (!error && data) {
       setLocationId(data.id)
+      setSiteName(data.location_name)
+    } else {
+      setSiteName(email)
     }
   }
 
-  // ログイン後、拠点IDが確定したら出荷指示・店舗データを読み込む
   useEffect(() => {
     if (!locationId) return
     loadAllData()
@@ -74,9 +76,7 @@ export default function Page() {
     }
   }
 
-  // --- 認証 ---
   async function handleLogin(name: string) {
-    setSiteName(name)
     await loadLocationId(name)
     setScreen('list')
   }
@@ -90,7 +90,6 @@ export default function Page() {
     setScreen('list')
   }
 
-  // --- 出荷指示 ---
   async function handleCreateShipment(data: Omit<Shipment, 'id' | 'status'>) {
     if (!locationId) return
     await createShipment({
@@ -104,7 +103,6 @@ export default function Page() {
     setScreen('list')
   }
 
-  // ステータス変更（順方向のみ許可。逆順・スキップは false を返す）
   function handleChangeStatus(id: string, to: ShipmentStatus): boolean {
     const target = shipments.find((s) => s.id === id)
     if (!target || !canTransition(target.status, to)) return false
@@ -112,12 +110,25 @@ export default function Page() {
     return true
   }
 
-  async function handleDeleteShipment(id: string) {
-    await deleteShipment(id)
+  function handleRequestDeleteShipment(id: string) {
+    setPendingDelete({ type: 'shipment', id })
+  }
+
+  function handleRequestDeleteStore(id: string) {
+    setPendingDelete({ type: 'store', id })
+  }
+
+  async function handleConfirmDelete() {
+    if (!pendingDelete) return
+    if (pendingDelete.type === 'shipment') {
+      await deleteShipment(pendingDelete.id)
+    } else {
+      await deleteStore(pendingDelete.id)
+    }
+    setPendingDelete(null)
     await loadAllData()
   }
 
-  // --- 店舗マスタ ---
   async function handleAddStore(data: Omit<Store, 'id'>) {
     await createStore(data)
     await loadAllData()
@@ -128,12 +139,6 @@ export default function Page() {
     await loadAllData()
   }
 
-  async function handleDeleteStore(id: string) {
-    await deleteStore(id)
-    await loadAllData()
-  }
-
-  // セッション確認中は、ログイン画面を一瞬表示してしまわないよう待機
   if (checkingSession) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background">
@@ -171,7 +176,7 @@ export default function Page() {
               shipments={shipments}
               onCreate={() => setScreen('create')}
               onChangeStatus={handleChangeStatus}
-              onDelete={handleDeleteShipment}
+              onDelete={handleRequestDeleteShipment}
             />
           )}
 
@@ -189,11 +194,23 @@ export default function Page() {
               onBack={() => setScreen('list')}
               onAdd={handleAddStore}
               onUpdate={handleUpdateStore}
-              onDelete={handleDeleteStore}
+              onDelete={handleRequestDeleteStore}
             />
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.type === 'store' ? '店舗を削除しますか？' : '出荷指示を削除しますか？'}
+        message={
+          pendingDelete?.type === 'store'
+            ? '関連する出荷指示がある場合、表示に影響する可能性があります。この操作は取り消せません。'
+            : 'この操作は取り消せません。'
+        }
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

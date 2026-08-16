@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ArrowLeft, Loader2, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SHIPMENT_TYPE_LABEL, type Shipment, type ShipmentType, type Store } from '@/lib/types'
-import { mockLookupAddress } from '@/lib/mock-data'
+import { lookupAddressByZipcode } from '@/lib/zipcloud'
 
 export function ShipmentForm({
   stores,
@@ -39,9 +39,15 @@ export function ShipmentForm({
       return
     }
     setLooking(true)
-    const result = await mockLookupAddress(zipcode)
-    setAddress(result)
-    setLooking(false)
+    setError('')
+    try {
+      const result = await lookupAddressByZipcode(zipcode.trim())
+      setAddress(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '住所検索に失敗しました。')
+    } finally {
+      setLooking(false)
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
